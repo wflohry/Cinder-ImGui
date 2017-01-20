@@ -1041,8 +1041,8 @@ void initialize( const Options &options )
 	if( options.isAutoRenderEnabled() && window ) {
 		ImGui::NewFrame();
 		
-    sWindowConnections += ( window->getSignalDraw().connect( newFrameGuard ) );
-    sWindowConnections += ( window->getSignalPostDraw().connect( render ) );
+		sWindowConnections += ( window->getSignalDraw().connect( newFrameGuard ) );
+		sWindowConnections += ( window->getSignalPostDraw().connect( render ) );
 	}
 	
 	// connect app's signals
@@ -1063,14 +1063,14 @@ void initialize( const Options &options )
 
 void connectWindow( ci::app::WindowRef window )
 {
-  sWindowConnections += window->getSignalMouseDown().connect( mouseDown );
-  sWindowConnections += window->getSignalMouseUp().connect( mouseUp );
-  sWindowConnections += window->getSignalMouseDrag().connect( mouseDrag );
-  sWindowConnections += window->getSignalMouseMove().connect( mouseMove );
-  sWindowConnections += window->getSignalMouseWheel().connect( mouseWheel );
-  sWindowConnections += window->getSignalKeyDown().connect( keyDown );
-  sWindowConnections += window->getSignalKeyUp().connect( keyUp );
-  sWindowConnections += window->getSignalResize().connect( resize );
+	sWindowConnections += window->getSignalMouseDown().connect( mouseDown );
+	sWindowConnections += window->getSignalMouseUp().connect( mouseUp );
+	sWindowConnections += window->getSignalMouseDrag().connect( mouseDrag );
+	sWindowConnections += window->getSignalMouseMove().connect( mouseMove );
+	sWindowConnections += window->getSignalMouseWheel().connect( mouseWheel );
+	sWindowConnections += window->getSignalKeyDown().connect( keyDown );
+	sWindowConnections += window->getSignalKeyUp().connect( keyUp );
+	sWindowConnections += window->getSignalResize().connect( resize );
 }
 void disconnectWindow( ci::app::WindowRef window )
 {
@@ -1424,9 +1424,11 @@ namespace {
 
 bool ColorPicker3( const char* label, float col[3] )
 {
+	ui::PushID( label );
     bool changed = ColorPickerImpl( &col[0], false );
 	SameLine();
 	TextUnformatted( label );
+	ui::PopID();
 	return changed;
 }
 		
