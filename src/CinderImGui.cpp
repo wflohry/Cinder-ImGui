@@ -348,45 +348,58 @@ Renderer::Renderer()
 	initBuffers();
 }
 
+#define USE_MAP_BUFFER
+
 //! renders imgui drawlist
 void Renderer::render( ImDrawData* draw_data )
 {
 	const float width	= ImGui::GetIO().DisplaySize.x;
 	const float height	= ImGui::GetIO().DisplaySize.y;
-	const auto vbo		= getVbo();
-	const auto shader	= getGlslProg();
+	const auto &vao		= getVao();
+	const auto &vbo		= getVbo();
+	const auto &shader	= getGlslProg();
+	auto ctx			= gl::context();
 	
 	const mat4 mat =
 	{
 		{ 2.0f/width,	0.0f,		0.0f,	0.0f },
 		{ 0.0f,		2.0f/-height,	0.0f,	0.0f },
-		{ 0.0f,		0.0f,		-1.0f,	0.0f },
-		{ -1.0f,	1.0f,		0.0f,	1.0f },
+		{ 0.0f,		0.0f,			-1.0f,	0.0f },
+		{ -1.0f,	1.0f,			0.0f,	1.0f },
 	};
-	// mat = glm::translate( mat, vec3( 0.375f, 0.375f, 0.0f ) );
 	
+	gl::ScopedVao scopedVao( vao.get() );
+	gl::ScopedBuffer scopedVbo( GL_ARRAY_BUFFER, vbo->getId() );
+	gl::ScopedBuffer scopedIbo( GL_ELEMENT_ARRAY_BUFFER, mIbo->getId() );
+	gl::ScopedGlslProg scopedShader( shader );
+	gl::ScopedDepth scopedDepth( false );
+	gl::ScopedBlendAlpha scopedBlend;
+	gl::ScopedFaceCulling scopedFaceCulling( false );
 	shader->uniform( "uModelViewProjection", mat );
 	shader->uniform( "uTex", 0 );
-	
+
+	GLuint currentTextureId = 0;
+	ctx->pushTextureBinding( GL_TEXTURE_2D, currentTextureId, 0 );
+	ctx->pushBoolState( GL_SCISSOR_TEST, GL_TRUE );
+	ctx->pushScissor();
 	for (int n = 0; n < draw_data->CmdListsCount; n++) {
 		const ImDrawList* cmd_list = draw_data->CmdLists[n];
-		const ImDrawIdx* idx_buffer = &cmd_list->IdxBuffer.front();
-		
-		// Grow our buffer if needed
+        const ImDrawIdx* idx_buffer_offset = 0;
+	
+#if defined( USE_MAP_BUFFER ) 
+		// grow vertex buffer if needed
 		int needed_vtx_size = cmd_list->VtxBuffer.size() * sizeof(ImDrawVert);
 		if ( vbo->getSize() < needed_vtx_size) {
 			GLsizeiptr size = needed_vtx_size + 2000 * sizeof(ImDrawVert);
-			#ifndef CINDER_LINUX_EGL_RPI2
+#ifndef CINDER_LINUX_EGL_RPI2
 			mVbo->bufferData( size, nullptr, GL_STREAM_DRAW );
-			#else
+#else
 			mVbo->bufferData( size, nullptr, GL_DYNAMIC_DRAW );
-			#endif
+#endif
 		}
-		
-		
-		// update vbo data
+
+		// update vertex data
 		{
-			gl::ScopedBuffer scopedVbo( GL_ARRAY_BUFFER, vbo->getId() );
 			ImDrawVert *vtx_data = static_cast<ImDrawVert*>( vbo->mapReplace() );
 			if (!vtx_data)
 				continue;
@@ -394,31 +407,58 @@ void Renderer::render( ImDrawData* draw_data )
 			vbo->unmap();
 		}
 		
+		// grow index buffer if needed
+		int needed_idx_size = cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx);
+		if( mIbo->getSize() < needed_idx_size ) {
+			GLsizeiptr size = needed_idx_size + 2000 * sizeof(ImDrawIdx);
+#if ! defined( CINDER_LINUX_EGL_RPI2 )
+			mIbo->bufferData( size, nullptr, GL_STREAM_DRAW );
+#else
+			mIbo->bufferData( size, nullptr, GL_DYNAMIC_DRAW );
+#endif
+		}
+		
+		// update index data
+		{
+			ImDrawIdx *idx_data = static_cast<ImDrawIdx*>( mIbo->mapReplace() );
+			if( ! idx_data )
+				continue;
+			memcpy( idx_data, &cmd_list->IdxBuffer[0], cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx) );
+			mIbo->unmap();
+		}
+#else
+#if ! defined( CINDER_LINUX_EGL_RPI2 )
+		mVbo->bufferData( (GLsizeiptr)cmd_list->VtxBuffer.Size * sizeof(ImDrawVert), (const GLvoid*)cmd_list->VtxBuffer.Data, GL_STREAM_DRAW );
+		mIbo->bufferData( (GLsizeiptr)cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx), (const GLvoid*)cmd_list->IdxBuffer.Data, GL_STREAM_DRAW );
+#else
+		mVbo->bufferData( (GLsizeiptr)cmd_list->VtxBuffer.Size * sizeof(ImDrawVert), (const GLvoid*)cmd_list->VtxBuffer.Data, GL_DYNAMIC_DRAW );
+		mIbo->bufferData( (GLsizeiptr)cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx), (const GLvoid*)cmd_list->IdxBuffer.Data, GL_DYNAMIC_DRAW );
+#endif
+#endif
+		
 		// issue draw commands
-		for (const ImDrawCmd* pcmd = cmd_list->CmdBuffer.begin(); pcmd != cmd_list->CmdBuffer.end(); pcmd++) {
+        for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
+        {
+            const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
 			if (pcmd->UserCallback) {
 				pcmd->UserCallback(cmd_list, pcmd);
 			}
 			else {
-				gl::ScopedVao scopedVao( getVao().get() );
-				gl::ScopedBuffer scopedIndexBuffer( mIbo );
-				gl::ScopedGlslProg scopedShader( shader );
-				gl::ScopedTextureBind scopedTexture( GL_TEXTURE_2D, (GLuint)(intptr_t) pcmd->TextureId );
-				gl::ScopedScissor scopedScissors( (int)pcmd->ClipRect.x, (int)(height - pcmd->ClipRect.w), (int)(pcmd->ClipRect.z - pcmd->ClipRect.x), (int)(pcmd->ClipRect.w - pcmd->ClipRect.y) );
-				gl::ScopedDepth scopedDepth( false );
-				gl::ScopedBlendAlpha scopedBlend;
-				gl::ScopedFaceCulling scopedFaceCulling( false );
-				
-				#if ! defined( CINDER_LINUX_EGL_RPI2 )
-				mIbo->bufferData( pcmd->ElemCount * sizeof(ImDrawIdx), idx_buffer, GL_STREAM_DRAW );
-				#else
-				mIbo->bufferData( pcmd->ElemCount * sizeof(ImDrawIdx), idx_buffer, GL_DYNAMIC_DRAW );
-				#endif
-				gl::drawElements( GL_TRIANGLES, (GLsizei) pcmd->ElemCount, GL_UNSIGNED_SHORT, nullptr );
+				bool pushTexture = currentTextureId != (GLuint)(intptr_t) pcmd->TextureId;
+				if( pushTexture ) {
+					currentTextureId = (GLuint)(intptr_t) pcmd->TextureId;
+					ctx->bindTexture( GL_TEXTURE_2D, currentTextureId, 0 );
+				}
+				ctx->setScissor( { ivec2( (int)pcmd->ClipRect.x, (int)(height - pcmd->ClipRect.w) ), ivec2( (int)(pcmd->ClipRect.z - pcmd->ClipRect.x), (int)(pcmd->ClipRect.w - pcmd->ClipRect.y) ) } );
+				gl::drawElements( GL_TRIANGLES, (GLsizei)pcmd->ElemCount, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, idx_buffer_offset );
 			}
-			idx_buffer += pcmd->ElemCount;
+			idx_buffer_offset += pcmd->ElemCount;
 		}
 	}
+
+	ctx->popScissor();
+	ctx->popBoolState( GL_SCISSOR_TEST );
+	ctx->popTextureBinding( GL_TEXTURE_2D, 0 );
 }
 
 //! initializes and returns the font texture
@@ -504,6 +544,7 @@ ImFont* Renderer::addFont( const ci::fs::path &font, float size, const ImWchar* 
 		for( const ImWchar* range = glyph_ranges; range[0] && range[1]; range += 2 ) {
 			ranges.push_back( range[0] );
 			ranges.push_back( range[1] );
+			ranges.push_back( 0 );
 		}
 		glyphRanges = ranges.data();
 	}
@@ -544,7 +585,6 @@ ImFont* Renderer::addFont( const ci::fs::path &font, float size, const ImWchar* 
 	if( merge && ! mFonts.empty() ) {
 		config.MergeMode = true;
 		config.PixelSnapH = true;
-		config.MergeGlyphCenterV = true;
 		//config.OversampleV = 4;
 	}
 	/*else if( merge ) {
@@ -888,6 +928,13 @@ namespace {
 		static auto timer = ci::Timer(true);
 		ImGuiIO& io = ImGui::GetIO();
 		io.DeltaTime = timer.getSeconds();
+
+		if (io.DeltaTime < 0.0f)
+		{
+			CI_LOG_W("WARNING: overriding imgui deltatime because it is " << io.DeltaTime);
+			io.DeltaTime = 1.0f/60.0f;
+		}
+
 		timer.start();
 
 		for ( int i = 0; i < IM_ARRAYSIZE(mousePressed); i++ ) {
@@ -1011,7 +1058,7 @@ void initialize( const Options &options )
 	
 #ifndef CINDER_LINUX
 	// clipboard callbacks
-	io.SetClipboardTextFn = []( const char* text ){
+	io.SetClipboardTextFn = []( void* user_data, const char* text ) {
 		const char* text_end = text + strlen(text);
 		char* buf = (char*)malloc(text_end - text + 1);
 		memcpy(buf, text, text_end-text);
@@ -1019,7 +1066,7 @@ void initialize( const Options &options )
 		Clipboard::setString( buf );
 		free(buf);
 	};
-	io.GetClipboardTextFn = [](){
+	io.GetClipboardTextFn = []( void* user_data ) {
 		string str = Clipboard::getString();
 		static vector<char> strCopy;
 		strCopy = vector<char>(str.begin(), str.end());
