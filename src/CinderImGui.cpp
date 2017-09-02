@@ -1393,6 +1393,7 @@ struct DockContext
 			, status(Status_Float)
 			, label("")
 			, opened(false)
+			, last_frame(0)
 		{
 			location[0] = 0;
 			children[0] = children[1] = nullptr;
@@ -1528,11 +1529,10 @@ struct DockContext
 		ImVec2 size;
 		Status_ status;
 		int last_frame;
-		int invalid_frames;
 		char location[16];
 		bool opened;
 		bool first;
-		size_t ptrId;
+		uint32_t ptrId;
 	};
 
 
@@ -1565,8 +1565,6 @@ struct DockContext
 		new_dock->size = GetIO().DisplaySize;
 		new_dock->opened = opened;
 		new_dock->first = true;
-		new_dock->last_frame = 0;
-		new_dock->invalid_frames = 0;
 		new_dock->location[0] = 0;
 		return *new_dock;
 	}
@@ -1649,27 +1647,6 @@ struct DockContext
 	}
 
 
-	void checkNonexistent()
-	{
-		int frame_limit = ImMax(0, ImGui::GetFrameCount() - 2);
-		for (Dock* dock : m_docks)
-		{
-			if (dock->isContainer()) continue;
-			if (dock->status == Status_Float) continue;
-			if (dock->last_frame < frame_limit)
-			{
-				++dock->invalid_frames;
-				if (dock->invalid_frames > 2)
-				{
-					doUndock(*dock);
-					dock->status = Status_Float;
-				}
-				return;
-			}
-			dock->invalid_frames = 0;
-		}
-	}
-
 
 	void beginPanel()
 	{
@@ -1694,7 +1671,6 @@ struct DockContext
 		Begin("###DockPanel", nullptr, flags);
 		splits();
 
-		checkNonexistent();
 	}
 
 
@@ -2237,12 +2213,32 @@ struct DockContext
 		doDock(dock, tmp ? tmp : prev, tmp && !tmp->children[0] ? Slot_Tab : getSlotFromLocationCode(*c));
 	}
 
+	void cleanDocks()
+	{
+		for (auto D : m_docks) {
+			std::array<Dock **, 4> ptrs{ &D->next_tab, &D->prev_tab, &D->children[0], &D->children[1] };
+			for (auto &ptr : ptrs) {
+				if (*ptr) {
+					bool found = false;
+					for (size_t i = 0; i < m_docks.size() && !found; ++i) {
+						if (*ptr == m_docks[i]) found = true;
+					}
+					if (!found)
+						*ptr = nullptr;
+				}
+			}
+		}
+	}
 
 	bool begin(const std::string& label, bool* opened, ImGuiWindowFlags extra_flags)
 	{
 		Dock& dock = getDock(label, !opened || *opened);
-		if (!dock.opened && (!opened || *opened)) tryDockToStoredLocation(dock);
+		if (dock.last_frame != 0 && m_last_frame != ImGui::GetFrameCount())
+		{
+			cleanDocks();
+		}
 		dock.last_frame = ImGui::GetFrameCount();
+		if (!dock.opened && (!opened || *opened)) tryDockToStoredLocation(dock);
 		if (!dock.label.compare(label))
 		{
 			dock.label = label;
@@ -2417,6 +2413,7 @@ struct DockContext
 
 	std::string toStringJson()
 	{
+		cleanDocks();
 		Json::Value tree(Json::arrayValue);
 		const int N = m_docks.size();
 
@@ -2481,7 +2478,6 @@ struct DockContext
 			m_docks[i] = IM_PLACEMENT_NEW(new_dock) Dock();
 			getValue(tree.get(i, {}).get("ptrId", {}), m_docks[i]->ptrId, 0);
 			new_dock->last_frame = 0;
-			new_dock->invalid_frames = 0;
 		}
 		for (size_t i = 0; i < N; ++i) {
 			auto thisNode = tree.get(i, {});
@@ -2490,7 +2486,7 @@ struct DockContext
 				return getValue(val, value, sizeof(value));
 			};
 			auto g = [this, &f](const std::string &name, Dock ** d) {
-				decltype((**d).id) id;
+				decltype((**d).ptrId) id;
 				if (!f(name, id)) return;
 				*d = nullptr;
 				for (size_t i = 0; i < m_docks.size() && !*d; ++i) {
