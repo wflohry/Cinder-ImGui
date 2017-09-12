@@ -827,14 +827,9 @@ namespace {
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		io.MousePos = toPixels( event.getPos() );
-		if( event.isLeftDown() ){
-			io.MouseDown[0] = true;
-			io.MouseDown[1] = false;
-		}
-		else if( event.isRightDown() ){
-			io.MouseDown[0] = false;
-			io.MouseDown[1] = true;
-		}
+		io.MouseDown[0] = event.isLeftDown();
+		io.MouseDown[1] = event.isRightDown();
+		io.MouseDown[2] = event.isMiddleDown();
 		
 		event.setHandled( io.WantCaptureMouse );
 	}
@@ -860,6 +855,7 @@ namespace {
 		ImGuiIO& io     = ImGui::GetIO();
 		io.MouseDown[0] = false;
 		io.MouseDown[1] = false;
+		io.MouseDown[2] = false;
 		
 		event.setHandled( io.WantCaptureMouse );
 	}
