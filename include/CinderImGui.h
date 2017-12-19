@@ -317,6 +317,9 @@ namespace ImGui {
 	IMGUI_API bool BeginDock(const char* label, bool* opened = nullptr, ImGuiWindowFlags extra_flags = 0);
 	IMGUI_API void EndDock();
 	IMGUI_API void SetDockActive();
+	IMGUI_API bool isMouseHoveringDock();
+	IMGUI_API std::string toStringJson();
+	IMGUI_API void fromStringJson(const std::string &s);
 #endif
 
 	// Getters/Setters Helpers Implementation

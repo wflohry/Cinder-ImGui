@@ -45,6 +45,7 @@
 #include "cinder/Clipboard.h"
 #include "cinder/CinderAssert.h"
 #include "cinder/Log.h"
+#include "jsoncpp/json.h"
 
 using namespace std;
 using namespace ci;
@@ -1390,7 +1391,7 @@ struct DockContext
 			, size(-1, -1)
 			, active(true)
 			, status(Status_Float)
-			, label(nullptr)
+			, label("")
 			, opened(false)
 		{
 			location[0] = 0;
@@ -1398,7 +1399,7 @@ struct DockContext
 		}
 
 
-		~Dock() { MemFree(label); }
+		~Dock() {  }
 
 
 		ImVec2 getMinSize() const
@@ -1516,11 +1517,11 @@ struct DockContext
 		}
 
 
-		char* label;
+		std::string label;
 		ImU32 id;
 		Dock* next_tab;
 		Dock* prev_tab;
-		Dock* children[2];
+		std::array<Dock *, 2 > children;
 		Dock* parent;
 		bool active;
 		ImVec2 pos;
@@ -1531,10 +1532,11 @@ struct DockContext
 		char location[16];
 		bool opened;
 		bool first;
+		size_t ptrId;
 	};
 
 
-	ImVector<Dock*> m_docks;
+	std::vector<Dock *> m_docks;
 	ImVec2 m_drag_offset;
 	Dock* m_current = nullptr;
 	int m_last_frame = 0;
@@ -1544,9 +1546,9 @@ struct DockContext
 	~DockContext() {}
 
 
-	Dock& getDock(const char* label, bool opened)
+	Dock& getDock(const std::string &label, bool opened)
 	{
-		ImU32 id = ImHash(label, 0);
+		ImU32 id = ImHash(label.c_str(), 0);
 		for (int i = 0; i < m_docks.size(); ++i)
 		{
 			if (m_docks[i]->id == id) return *m_docks[i];
@@ -1555,8 +1557,7 @@ struct DockContext
 		Dock* new_dock = (Dock*)MemAlloc(sizeof(Dock));
 		IM_PLACEMENT_NEW(new_dock) Dock();
 		m_docks.push_back(new_dock);
-		new_dock->label = ImStrdup(label);
-		IM_ASSERT(new_dock->label);
+		new_dock->label = label;
 		new_dock->id = id;
 		new_dock->setActive();
 		new_dock->status = Status_Float;
@@ -1961,7 +1962,7 @@ struct DockContext
 			while (tmp)
 			{
 				bool dummy = false;
-				if (Selectable(tmp->label, &dummy))
+				if (Selectable(tmp->label.c_str(), &dummy))
 				{
 					tmp->setActive();
 				}
@@ -2013,9 +2014,10 @@ struct DockContext
 			{
 				SameLine(0, 15);
 
-				const char* text_end = FindRenderedTextEnd(dock_tab->label);
-				ImVec2 size(CalcTextSize(dock_tab->label, text_end).x, line_height);
-				if (InvisibleButton(dock_tab->label, size))
+				const char* tab_label = dock_tab->label.c_str();
+				const char* text_end = FindRenderedTextEnd(tab_label);
+				ImVec2 size(CalcTextSize(tab_label, text_end).x, line_height);
+				if (InvisibleButton(tab_label, size))
 				{
 					dock_tab->setActive();
 				}
@@ -2045,7 +2047,7 @@ struct DockContext
 
 				draw_list->PathClear();
 				draw_list->AddRectFilled( pos + ImVec2( -5, 0 ), pos + ImVec2( size.x + 5, size.y ), hovered ? color_hovered : (dock_tab->active ? color_active : color), style.FrameRounding, 1 | 2 );
-				draw_list->AddText( pos, text_color, dock_tab->label, text_end);
+				draw_list->AddText( pos, text_color, tab_label, text_end);
 
 				dock_tab = dock_tab->next_tab;
 			}
@@ -2142,7 +2144,7 @@ struct DockContext
 			container->size = dest->size;
 			container->pos = dest->pos;
 			container->status = Status_Docked;
-			container->label = ImStrdup("");
+			container->label = "";
 
 			if (!dest->parent)
 			{
@@ -2236,15 +2238,14 @@ struct DockContext
 	}
 
 
-	bool begin(const char* label, bool* opened, ImGuiWindowFlags extra_flags)
+	bool begin(const std::string& label, bool* opened, ImGuiWindowFlags extra_flags)
 	{
 		Dock& dock = getDock(label, !opened || *opened);
 		if (!dock.opened && (!opened || *opened)) tryDockToStoredLocation(dock);
 		dock.last_frame = ImGui::GetFrameCount();
-		if (strcmp(dock.label, label) != 0)
+		if (!dock.label.compare(label))
 		{
-			MemFree(dock.label);
-			dock.label = ImStrdup(label);
+			dock.label = label;
 		}
 		
 		m_end_action = EndAction_None;
@@ -2278,7 +2279,7 @@ struct DockContext
 		{
 			SetNextWindowPos(dock.pos);
 			SetNextWindowSize(dock.size);
-			bool ret = Begin(label,
+			bool ret = Begin(label.c_str(),
 				opened,
 				dock.size,
 				-1.0f,
@@ -2320,10 +2321,8 @@ struct DockContext
 								 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
 								 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus |
 								 extra_flags;
-		char tmp[256];
-		strcpy(tmp, label);
-		strcat(tmp, "_docked"); // to avoid https://github.com/ocornut/imgui/issues/713
-		bool ret = BeginChild(tmp, size, true, flags);
+		std::string temp = label + "_docked";// to avoid https://github.com/ocornut/imgui/issues/713
+		bool ret = BeginChild(temp.c_str(), size, true, flags);
 		PopStyleColor();
 		PopStyleColor();
 		return ret;
@@ -2362,6 +2361,147 @@ struct DockContext
 		return -1;
 	}
 
+	bool isMouseHoveringDock() {
+		if (!ImGui::IsMouseHoveringWindow()) return false;
+		for (int i = 0; i < m_docks.size(); ++i) {
+			if (m_docks[i]->status == Status_Dragged)
+				return false;
+		}
+		return  true;
+	}
+
+
+	static bool getValue(Json::Value &value, float &output, size_t N) { if (value.isNull()) return false;  output = value.asFloat(); return true; }
+	static bool getValue(Json::Value &value, int &output, size_t N) { if (value.isNull()) return false; output = value.asInt(); return true; }
+	static bool getValue(Json::Value &value, uint32_t &output, size_t N) { if (value.isNull()) return false; output = value.asUInt(); return true; }
+	static bool getValue(Json::Value &value, uint64_t &output, size_t N) { if (value.isNull()) return false; output = value.asUInt64(); return true; }
+	static bool getValue(Json::Value &value, bool &output, size_t N) { if (value.isNull()) return false; output = value.asBool(); return true; }
+	static bool getValue(Json::Value &value, std::string & output, size_t N) {
+		if (value.isNull()) return false;
+		output = value.asString();
+		return true;
+	}
+
+	template <typename U>
+	struct writeCast {
+		template <typename F, typename T>
+		void operator()(F f, const std::string &name, T& value)
+		{
+			U v = static_cast<U>(value);
+			f(name, v);
+			value = static_cast<T>(v);
+		}
+	};
+
+	template <typename F, typename G>
+	void serialize(Dock &dock, F f, G g)
+	{
+		f("ptrId", dock.ptrId);
+		f("id", dock.id);
+		f("label", dock.label);
+		f("x", dock.pos.x);
+		f("y", dock.pos.y);
+		f("size_x", dock.size.x);
+		f("size_y", dock.size.y);
+		f("active", dock.active);
+		f("opened", dock.opened);
+		f("first", dock.first);
+		writeCast<int>{}(f, "status", dock.status);
+
+		g("next", &dock.next_tab);
+		g("prev", &dock.prev_tab);
+		g("child0", &dock.children[0]);
+		g("child1", &dock.children[1]);
+		g("parent", &dock.parent);
+	}
+
+	std::string toStringJson()
+	{
+		Json::Value tree(Json::arrayValue);
+		const int N = m_docks.size();
+
+		for (auto &dock : m_docks) {
+			dock->ptrId = std::hash<void*>()(&dock);
+		}
+
+		std::function<void(Dock*, Dock*)> setParent = [&setParent](Dock * parent, Dock * child)
+		{
+			if (child) {
+				child->parent = parent;
+				setParent(child, nullptr);;
+			}
+			else {
+				for (int i = 0; i < 2; ++i) {
+					if (parent->children[i]) setParent(parent, parent->children[i]);
+				}
+			}
+		};
+
+		for (int i = 0; i < N; ++i) {
+			//setParent(m_docks[i], nullptr);
+		}
+		for (int i = 0; i < N; ++i) {
+			Json::Value thisNode;
+			auto f = [&thisNode](const std::string &s, auto &value) {
+				thisNode[s] = Json::Value(value);
+				return true; // write always works
+			};
+			auto g = [&f](const std::string &name, Dock ** d) -> bool {
+				if (!*d) return false;
+				auto id = (*d)->ptrId;
+				return f(name, id);
+			};
+
+			auto &m_dock = *m_docks[i];
+			auto m_hash = ImHash(m_dock.label.c_str(), 0);
+			serialize(m_dock, f, g);
+			tree.append(thisNode);
+		}
+		std::stringstream ss;
+		ss << tree;
+		return ss.str();
+	}
+
+	void fromStringJson(const std::string &s)
+	{
+		Json::Reader reader;
+		Json::Value tree;
+		reader.parse(s, tree);
+		for (int i = 0; i < m_docks.size(); ++i)
+		{
+			m_docks[i]->~Dock();
+			MemFree(m_docks[i]);
+		}
+		m_docks.clear();
+
+		const int N = tree.size();
+		m_docks.resize(N);
+		for (size_t i = 0; i < N; ++i) {
+			Dock* new_dock = (Dock*)MemAlloc(sizeof(Dock));
+			m_docks[i] = IM_PLACEMENT_NEW(new_dock) Dock();
+			getValue(tree.get(i, {}).get("ptrId", {}), m_docks[i]->ptrId, 0);
+			new_dock->last_frame = 0;
+			new_dock->invalid_frames = 0;
+		}
+		for (size_t i = 0; i < N; ++i) {
+			auto thisNode = tree.get(i, {});
+			auto f = [&thisNode](const std::string &s, auto &value) -> bool {
+				Json::Value val = thisNode[s];
+				return getValue(val, value, sizeof(value));
+			};
+			auto g = [this, &f](const std::string &name, Dock ** d) {
+				decltype((**d).id) id;
+				if (!f(name, id)) return;
+				*d = nullptr;
+				for (size_t i = 0; i < m_docks.size() && !*d; ++i) {
+					if (m_docks[i]->ptrId == id) {
+						*d = m_docks[i];
+					}
+				}
+			};
+			serialize(*m_docks[i], f, g);
+		}
+	}
 	/*
 	void save(Lumix::FS::OsFile& file)
 	{
@@ -2516,6 +2656,11 @@ void SetDockActive()
 }
 
 
+IMGUI_API bool isMouseHoveringDock()
+{
+	return g_dock.isMouseHoveringDock();
+}
+
 bool BeginDock(const char* label, bool* opened, ImGuiWindowFlags extra_flags)
 {
 	return g_dock.begin(label, opened, extra_flags);
@@ -2526,6 +2671,17 @@ void EndDock()
 {
 	g_dock.end();
 }
+
+IMGUI_API std::string toStringJson()
+{
+	return g_dock.toStringJson();
+}
+
+IMGUI_API void fromStringJson(const std::string &s)
+{
+	g_dock.fromStringJson(s);
+}
+
 
 #endif
 
