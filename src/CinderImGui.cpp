@@ -203,6 +203,13 @@ ImGui::Options& ImGui::Options::antiAliasedLines( bool antiAliasing )
 	mStyle.AntiAliasedLines = antiAliasing;
 	return *this;
 }
+/*
+ImGui::Options& ImGui::Options::antiAliasedShapes( bool antiAliasing )
+{
+	mStyle.AntiAliasedShapes = antiAliasing;
+	return *this;
+}
+*/
 ImGui::Options& ImGui::Options::curveTessellationTol( float tessTolerance )
 {
 	mStyle.CurveTessellationTol = tessTolerance;
@@ -250,7 +257,7 @@ ImGui::Options& ImGui::Options::darkTheme()
 	style.Colors[ImGuiCol_Text]                  = ImVec4(0.86f, 0.93f, 0.89f, 0.78f);
 	style.Colors[ImGuiCol_TextDisabled]          = ImVec4(0.86f, 0.93f, 0.89f, 0.28f);
 	style.Colors[ImGuiCol_WindowBg]              = ImVec4(0.13f, 0.14f, 0.17f, 1.00f);
-	style.Colors[ImGuiCol_ChildBg]				 = ImVec4(0.20f, 0.22f, 0.27f, 0.58f);
+	style.Colors[ImGuiCol_ChildWindowBg]		 = ImVec4(0.20f, 0.22f, 0.27f, 0.58f);
 	style.Colors[ImGuiCol_Border]                = ImVec4(0.31f, 0.31f, 1.00f, 0.00f);
 	style.Colors[ImGuiCol_BorderShadow]          = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
 	style.Colors[ImGuiCol_FrameBg]               = ImVec4(0.20f, 0.22f, 0.27f, 1.00f);
@@ -999,7 +1006,7 @@ void initialize( const Options &options )
 	imGuiStyle.DisplayWindowPadding		= style.DisplayWindowPadding;
 	imGuiStyle.DisplaySafeAreaPadding	= style.DisplaySafeAreaPadding;
 	imGuiStyle.AntiAliasedLines			= style.AntiAliasedLines;
-	imGuiStyle.AntiAliasedFill			= style.AntiAliasedFill;
+	//imGuiStyle.AntiAliasedShapes		= style.AntiAliasedShapes;
 	
 	// set colors
 	for( int i = 0; i < ImGuiCol_COUNT; i++ )
