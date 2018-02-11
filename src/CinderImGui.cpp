@@ -823,15 +823,27 @@ bool Combo( const char* label, int* current_item, const std::vector<std::string>
 }
 
 namespace {
-	
+
+	bool mousePressed[3] = { false, false, false };
+	bool mouseState[3]   = { false, false, false };
+
 	//! sets the right mouseDown IO values in imgui
 	void mouseDown( ci::app::MouseEvent& event )
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		io.MousePos = toPixels( event.getPos() );
-		io.MouseDown[0] = event.isLeftDown();
-		io.MouseDown[1] = event.isRightDown();
-		io.MouseDown[2] = event.isMiddleDown();
+		if( event.isLeftDown() ){
+			mousePressed[0] = true;
+			mouseState[0]   = true;
+		}
+		else if( event.isRightDown() ){
+			mousePressed[1] = true;
+			mouseState[1]   = true;
+		}
+		else if( event.isMiddleDown() ){
+			mousePressed[2] = true;
+			mouseState[2]   = true;
+		}
 		
 		event.setHandled( io.WantCaptureMouse );
 	}
@@ -854,10 +866,10 @@ namespace {
 	//! sets the right mouseDrag IO values in imgui
 	void mouseUp( ci::app::MouseEvent& event )
 	{
-		ImGuiIO& io     = ImGui::GetIO();
-		io.MouseDown[0] = false;
-		io.MouseDown[1] = false;
-		io.MouseDown[2] = false;
+		ImGuiIO& io   = ImGui::GetIO();
+		mouseState[0] = false;
+		mouseState[1] = false;
+		mouseState[2] = false;
 		
 		event.setHandled( io.WantCaptureMouse );
 	}
@@ -931,6 +943,12 @@ namespace {
 		}
 
 		timer.start();
+
+		for ( int i = 0; i < IM_ARRAYSIZE(mousePressed); i++ ) {
+			io.MouseDown[i] = mousePressed[i] || mouseState[i];
+			mousePressed[i] = false;
+		}
+		
 		ImGui::Render();
 		sNewFrame = false;
 		App::get()->dispatchAsync( []() {
