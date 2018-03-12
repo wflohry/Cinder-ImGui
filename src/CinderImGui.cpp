@@ -1233,8 +1233,19 @@ ScopedMenuBar::ScopedMenuBar()
 }
 ScopedMenuBar::~ScopedMenuBar()
 {
-	if( mOpened ) ImGui::EndMenuBar();
+    if( mOpened ) ImGui::EndMenuBar();
 }
+
+bool Checkbox(const char *label, std::function<bool ()> get, std::function<void (bool)> set)
+{
+    bool value = get();
+    if( Checkbox( label, &value ) ){
+        set(value);
+        return true;
+    }
+    return false;
+}
+
 //
 //bool FilePicker( const char* label, fs::path* path, bool open, const fs::path &initialPath, std::vector<std::string> extensions )
 //{

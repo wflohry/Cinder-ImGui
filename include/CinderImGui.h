@@ -195,6 +195,7 @@ namespace ImGui {
 	bool InputText( const char* label, T *object, std::string( T::*get )() const, void( T::*set )( const std::string& ), ImGuiInputTextFlags flags = 0, ImGuiTextEditCallback callback = NULL, void* user_data = NULL );
 	template<typename T>
 	bool Checkbox(const char* label, T *object, bool( T::*get )() const, void( T::*set )( bool ) );
+    bool Checkbox(const char* label, std::function<bool(void)> get, std::function<void(bool)> set);
 	template<typename T>
 	bool DragFloat(const char* label, T *object, float( T::*get )() const, void( T::*set )( float ), float v_speed = 1.0f, float v_min = 0.0f, float v_max = 0.0f, const char* display_format = "%.3f", float power = 1.0f);     // If v_min >= v_max we have no bound
 	template<typename T>
