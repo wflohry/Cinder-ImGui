@@ -64,7 +64,6 @@ operator ci::Color() const { return ci::Color(x,y,z); }
 
 #include "CinderImGuiExports.h"
 #include "imgui.h"
-#include "imguidock.h"
 
 #ifndef CINDER_IMGUI_NO_NAMESPACE_ALIAS
 namespace ui = ImGui;
